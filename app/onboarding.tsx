@@ -9,13 +9,14 @@ import {
   ScrollView,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '@/context/AppContext';
 import { translations } from '@/constants/translations';
 import { Colors } from '@/constants/colors';
-import { Leaf } from 'lucide-react-native';
+import { Leaf, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { Language } from '@/constants/translations';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -58,13 +59,13 @@ export default function OnboardingScreen() {
   const t = translations[language];
 
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [showSlides, setShowSlides] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoFloat = useRef(new Animated.Value(0)).current;
   const slidesOpacity = useRef(new Animated.Value(0)).current;
-  const showLogo = useRef(true);
 
   useEffect(() => {
     // Logo entrance animation
@@ -86,7 +87,7 @@ export default function OnboardingScreen() {
 
     // After 2.5 seconds, fade out logo and show slides
     const timer = setTimeout(() => {
-      showLogo.current = false;
+      setShowSlides(true);
       Animated.parallel([
         Animated.timing(logoOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
         Animated.timing(slidesOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -104,12 +105,45 @@ export default function OnboardingScreen() {
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffset = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffset / SCREEN_WIDTH);
-    setCurrentSlide(index);
+    if (index >= 0 && index < SLIDES.length) {
+      setCurrentSlide(index);
+    }
+  };
+
+  const scrollToSlide = (index: number) => {
+    if (index >= 0 && index < SLIDES.length) {
+      scrollViewRef.current?.scrollTo({
+        x: SCREEN_WIDTH * index,
+        animated: true,
+      });
+      setCurrentSlide(index);
+    }
+  };
+
+  const goToNext = () => {
+    if (currentSlide < SLIDES.length - 1) {
+      scrollToSlide(currentSlide + 1);
+    }
+  };
+
+  const goToPrev = () => {
+    if (currentSlide > 0) {
+      scrollToSlide(currentSlide - 1);
+    }
   };
 
   const handleGetStarted = async () => {
-    await setIsOnboarded(true);
-    router.replace('/(tabs)');
+    try {
+      await setIsOnboarded(true);
+      router.replace('/(tabs)');
+    } catch (e) {
+      // Fallback navigation
+      router.replace('/(tabs)');
+    }
+  };
+
+  const handleSkip = () => {
+    handleGetStarted();
   };
 
   return (
@@ -137,7 +171,37 @@ export default function OnboardingScreen() {
       </Animated.View>
 
       {/* Slides Phase */}
-      <Animated.View style={[styles.slidesContainer, { opacity: slidesOpacity }]}>
+      <Animated.View style={[styles.slidesContainer, { opacity: slidesOpacity, zIndex: showSlides ? 10 : 0 }]}>
+        {/* Left Arrow */}
+        {showSlides && (
+          <TouchableOpacity
+            style={[styles.navArrow, styles.navArrowLeft]}
+            onPress={goToPrev}
+            activeOpacity={0.7}
+            disabled={currentSlide === 0}
+          >
+            <ChevronLeft
+              color={currentSlide === 0 ? Colors.textMuted : Colors.primary}
+              size={28}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Right Arrow */}
+        {showSlides && (
+          <TouchableOpacity
+            style={[styles.navArrow, styles.navArrowRight]}
+            onPress={goToNext}
+            activeOpacity={0.7}
+            disabled={currentSlide === SLIDES.length - 1}
+          >
+            <ChevronRight
+              color={currentSlide === SLIDES.length - 1 ? Colors.textMuted : Colors.primary}
+              size={28}
+            />
+          </TouchableOpacity>
+        )}
+
         <ScrollView
           ref={scrollViewRef}
           horizontal
@@ -146,6 +210,7 @@ export default function OnboardingScreen() {
           onScroll={handleScroll}
           scrollEventThrottle={16}
           contentContainerStyle={styles.scrollContent}
+          bounces={false}
         >
           {SLIDES.map((slide, index) => (
             <View key={index} style={styles.slide}>
@@ -161,18 +226,37 @@ export default function OnboardingScreen() {
         {/* Pagination dots */}
         <View style={styles.pagination}>
           {SLIDES.map((_, index) => (
-            <View
+            <TouchableOpacity
               key={index}
-              style={[
-                styles.dot,
-                currentSlide === index && styles.dotActive,
-              ]}
-            />
+              onPress={() => scrollToSlide(index)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.dot,
+                  currentSlide === index && styles.dotActive,
+                ]}
+              />
+            </TouchableOpacity>
           ))}
         </View>
 
-        {/* Get Started button - only show on last slide */}
-        {currentSlide === SLIDES.length - 1 && (
+        {/* Bottom buttons container */}
+        <View style={styles.buttonsContainer}>
+          {/* Skip button - visible on slides 1 and 2 */}
+          {currentSlide < SLIDES.length - 1 && (
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleSkip}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.skipText}>
+                {language === 'en' ? 'Skip' : 'Geç'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Get Started button - visible on ALL slides */}
           <TouchableOpacity onPress={handleGetStarted} activeOpacity={0.85}>
             <LinearGradient
               colors={['#4CAF50', '#2d6a4f']}
@@ -183,7 +267,7 @@ export default function OnboardingScreen() {
               <Text style={styles.buttonText}>{t.getStarted}</Text>
             </LinearGradient>
           </TouchableOpacity>
-        )}
+        </View>
       </Animated.View>
     </View>
   );
@@ -202,6 +286,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 5,
   },
   logoShadow: {
     shadowColor: Colors.primary,
@@ -250,22 +335,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  navArrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(36,61,36,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    zIndex: 20,
+  },
+  navArrowLeft: {
+    left: 16,
+  },
+  navArrowRight: {
+    right: 16,
+  },
   scrollContent: {
     alignItems: 'center',
   },
   slide: {
     width: SCREEN_WIDTH,
-    paddingHorizontal: 32,
+    paddingHorizontal: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 100,
+    paddingBottom: 80,
+    paddingTop: 60,
   },
   slideIcon: {
-    fontSize: 64,
-    marginBottom: 32,
+    fontSize: 56,
+    marginBottom: 28,
   },
   slideBigText: {
-    fontSize: 52,
+    fontSize: 48,
     fontWeight: '900',
     color: Colors.primary,
     textAlign: 'center',
@@ -273,31 +379,49 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   slideSubtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textGreen,
     textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 20,
+    lineHeight: 22,
+    paddingHorizontal: 16,
   },
   pagination: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 140,
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
+    alignItems: 'center',
   },
   dot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#3a5a3a',
+    backgroundColor: '#2a4a2a',
   },
   dotActive: {
     backgroundColor: Colors.primary,
     width: 28,
   },
-  button: {
+  buttonsContainer: {
     position: 'absolute',
-    bottom: 48,
+    bottom: 40,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    zIndex: 30,
+  },
+  skipButton: {
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  skipText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  button: {
     paddingVertical: 16,
     paddingHorizontal: 56,
     borderRadius: 50,
