@@ -127,7 +127,3 @@ npm run dev
 ## 👩‍💻 Author / Geliştirici
 
 **Elif Özkan**
-
-```
-
-```
